@@ -1,0 +1,121 @@
+---
+title: "R Notebook to explore the NOAA Storm Database"
+output: pdf_document
+---
+## Summary
+
+The basic goal of this assignment is to explore the NOAA Storm Database and answer some basic questions about severe weather events. 
+
+The analysis addresses the following questions:
+
+1. Across the United States, which types of events (as indicated in the EVTYPE variable) are most harmful with respect to population health?
+
+2. Across the United States, which types of events have the greatest economic consequences?
+
+We charge the libraries that we will use during the calculations and ploting
+```{r}
+library(ggplot2)
+library(dplyr) # to use case_when function
+```
+
+## Data Processing
+
+Fisrt we charge the data provided that can be found zipped in [Data Storm](https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2FStormData.csv.bz2)
+```{r}
+stormData <- read.csv("repdata_data_StormData.csv",na.strings="", sep=",", head=TRUE)
+# show the first rows of data
+head(stormData)
+```
+
+Explore the names of the columns to clasify the information.
+```{r}
+names(stormData)
+```
+We see that for the firs question we are interested in the INJURIES and FATALITIES columns.
+For the second question we are interested in the "damage" columns (PROPDMG and CROPDMG).
+
+First then we group the information by EVTYPE to have a reduced group adding the fatalities and injuries in two dataframes and order the values descending
+```{r}
+eventFatalities <- aggregate(FATALITIES~EVTYPE, data=stormData, sum)
+eventFatalities <- eventFatalities[order(-eventFatalities$FATALITIES),]
+
+eventInjuries <- aggregate(INJURIES~EVTYPE, data=stormData, sum)
+eventInjuries<-eventInjuries[order(-eventInjuries$INJURIES),]
+
+eventFatalitiesAndInjuries <-aggregate((INJURIES +FATALITIES )~EVTYPE, data=stormData, sum)
+
+eventFatalitiesAndInjuries<-eventFatalitiesAndInjuries[order(-eventFatalitiesAndInjuries$`(INJURIES + FATALITIES)`),]
+```
+We take only the ten greater values for fatalities and injuries to plot the values in the results section.
+```{r}
+teneventFatalities <- head(eventFatalities, 10)
+teneventInjuries <-head(eventInjuries, 10)
+
+```
+
+## Results
+From data procesing we see the most severe events, however a ploting is added to show it graphically.
+
+```{r}
+ggplot(data=teneventFatalities, aes(x=teneventFatalities$EVTYPE, y=teneventFatalities$FATALITIES)) +
+    geom_bar(stat="identity",position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90)) +
+    labs(x = "Event", y = "Fatalities", title = "USA ten most fatalities causing events")
+```
+
+
+The tornado is with great different the worst event followed by excesive heat and flash flood.
+
+```{r}
+ggplot(data=teneventInjuries, aes(x=teneventInjuries$EVTYPE, y=teneventInjuries$INJURIES)) +
+    geom_bar(stat="identity",position=position_dodge()) +
+    theme(axis.text.x = element_text(angle = 90)) +
+    labs(x = "Event", y = "Injuries", title = "USA ten most injuries causing events")
+```
+
+For injuries, the tornado, followed by TSTM Wind, Flood and excessive Heat.
+To keep the worst combined we just show the sum of both.
+```{r}
+head(eventFatalitiesAndInjuries, 10)
+```
+ We consider then those values as the worst combining Injuries + fatalities.
+
+For the second question we are going just to agregate all the damages and sort the worst events.
+Before doing the sum, we read in page 12 of the [Storm Data Documentation]( https://d396qusza40orc.cloudfront.net/repdata%2Fpeer2_doc%2Fpd01016005curr.pdf)
+And see that we have to convert to the same units before summing the values.
+
+First we generate a copy of the dataframe and find different values to convert (from names we find the index of PROPDMGEXP and CROPDMGEXP)
+```{r}
+eventsDamage <-stormData
+unique(eventsDamage[,28] )
+unique(eventsDamage[,26] )
+```
+We generate a new column in the data set with the value in dolars of each damage to properties and crops and after that, we agregate the values in billions of dolars.
+```{r}
+
+eventsDamage <-eventsDamage %>% mutate(damageprop = case_when(is.na(PROPDMGEXP) ~ PROPDMG,
+                                           PROPDMGEXP=="K" ~ 1000*PROPDMG,
+                                           PROPDMGEXP=="k" ~ 1000*PROPDMG,
+                                           PROPDMGEXP=="M" ~ 1000000*PROPDMG,
+                                           PROPDMGEXP=="m" ~ 1000000*PROPDMG,
+                                           PROPDMGEXP=="B" ~ PROPDMG*1000000000,
+                                           FALSE ~ PROPDMG))
+eventsDamage <-eventsDamage %>% mutate(damagecrop = case_when(is.na(CROPDMGEXP) ~ CROPDMG,
+                                           CROPDMGEXP=="K" ~ 1000*CROPDMG,
+                                           CROPDMGEXP=="k" ~ 1000*CROPDMG,
+                                           CROPDMGEXP=="M" ~ 1000000*CROPDMG,
+                                           CROPDMGEXP=="m" ~ 1000000*CROPDMG,
+                                           CROPDMGEXP=="B" ~ CROPDMG*1000000000,
+                                           FALSE ~ CROPDMG))
+
+#Agregate the damage in billions of Dolars
+eventsDamage <-aggregate((damageprop+damagecrop)/1000000000~EVTYPE, data=eventsDamage, sum)
+names(eventsDamage)[2]<- "damage"
+eventsDamageOrdered<- eventsDamage[order(-eventsDamage$damage),]
+
+head(eventsDamageOrdered, 10)
+```
+
+The table shows that the FOOD is the event generating the highest economical cost with more than 150 billion dolars.
+
+
